@@ -90,7 +90,12 @@ export default function Home() {
   }, [filter, reports]);
 
   const reportCount = 120 + Math.max(0, reports.length - seedReports.length);
-  const closeIntro = (open: boolean) => { setIntroOpen(open); if (!open) sessionStorage.setItem('andong-tour-seen', '1'); };
+  const closeIntro = (open: boolean) => {
+    setIntroOpen(open);
+    if (!open) {
+      try { window.sessionStorage?.setItem('andong-tour-seen', '1'); } catch { /* 저장소가 없어도 안내창은 정상적으로 닫는다 */ }
+    }
+  };
 
   return (
     <main className="min-h-screen bg-background pb-8 text-foreground">
@@ -142,7 +147,7 @@ export default function Home() {
 
       <nav className="fixed inset-x-3 bottom-3 z-40 flex items-center justify-around rounded-2xl border border-white/60 bg-white/95 p-2 shadow-[0_15px_45px_rgba(14,55,43,.18)] backdrop-blur md:hidden"><button className="flex min-w-14 flex-col items-center gap-1 rounded-xl bg-[#e8f2ee] px-2 py-2 text-xs font-bold text-[#205344]"><BarChart3 className="size-5" />현황</button><button onClick={() => document.getElementById('reports')?.scrollIntoView({ behavior: 'smooth' })} className="flex min-w-14 flex-col items-center gap-1 px-2 py-2 text-xs font-semibold text-[#71847d]"><MapPin className="size-5" />지도</button><button onClick={() => setReportOpen(true)} className="-mt-7 grid size-14 place-items-center rounded-2xl bg-[#d9f260] text-[#173f34] shadow-[0_8px_20px_rgba(23,63,52,.25)]"><Camera className="size-6" /><span className="sr-only">신고하기</span></button><button className="flex min-w-14 flex-col items-center gap-1 px-2 py-2 text-xs font-semibold text-[#71847d]"><Recycle className="size-5" />수거</button><button onClick={() => document.getElementById('performance')?.scrollIntoView({ behavior: 'smooth' })} className="flex min-w-14 flex-col items-center gap-1 px-2 py-2 text-xs font-semibold text-[#71847d]"><Users className="size-5" />성과</button></nav>
 
-      <IntroDialog open={introOpen} onOpenChange={closeIntro} onStartReport={() => setReportOpen(true)} />
+      {introOpen && <IntroDialog open onOpenChange={closeIntro} onStartReport={() => setReportOpen(true)} />}
       <ReportDialog open={reportOpen} onOpenChange={setReportOpen} onSubmit={addReport} />
     </main>
   );
