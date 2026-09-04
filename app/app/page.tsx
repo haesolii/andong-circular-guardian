@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { BarChart3, Camera, CheckCircle2, ChevronRight, CircleAlert, Flame, Leaf, MapPin, Medal, Recycle, Route, Sparkles, TrendingDown, Trophy, Users } from 'lucide-react';
+import { BarChart3, Camera, CheckCircle2, ChevronRight, Flame, Leaf, MapPin, Medal, Recycle, Sparkles, TrendingDown, Trophy, Users } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { KakaoMap, type MapReport } from '@/components/kakao-map';
@@ -16,6 +16,21 @@ const seedReports: Report[] = [
   { id: 3, category: '폐농약 용기', place: '와룡면', time: '1시간 전', status: '수거 중', lat: 36.621, lng: 128.763 },
   { id: 4, category: '불법소각', place: '임하면', time: '2시간 전', status: '처리 완료', lat: 36.516, lng: 128.832 },
   { id: 5, category: '고춧대', place: '녹전면', time: '3시간 전', status: '배정', lat: 36.741, lng: 128.772 },
+  { id: 6, category: '폐비닐', place: '서후면', time: '4시간 전', status: '수거 중', lat: 36.617, lng: 128.659 },
+  { id: 7, category: '볏짚', place: '남후면', time: '5시간 전', status: '접수', lat: 36.512, lng: 128.657 },
+  { id: 8, category: '불법소각', place: '남선면', time: '6시간 전', status: '배정', lat: 36.523, lng: 128.768 },
+  { id: 9, category: '폐농자재', place: '북후면', time: '어제', status: '수거 중', lat: 36.683, lng: 128.698 },
+  { id: 10, category: '과수 전정가지', place: '일직면', time: '어제', status: '처리 완료', lat: 36.473, lng: 128.656 },
+  { id: 11, category: '폐농약 용기', place: '예안면', time: '어제', status: '접수', lat: 36.661, lng: 128.887 },
+  { id: 12, category: '불법소각', place: '도산면', time: '어제', status: '처리 완료', lat: 36.724, lng: 128.833 },
+  { id: 13, category: '고춧대', place: '풍천면', time: '2일 전', status: '수거 중', lat: 36.556, lng: 128.506 },
+  { id: 14, category: '폐비닐', place: '임동면', time: '2일 전', status: '배정', lat: 36.571, lng: 128.919 },
+  { id: 15, category: '기타 농업부산물', place: '안기동', time: '2일 전', status: '접수', lat: 36.58, lng: 128.712 },
+  { id: 16, category: '폐농자재', place: '송하동', time: '3일 전', status: '처리 완료', lat: 36.566, lng: 128.686 },
+  { id: 17, category: '과수 전정가지', place: '강남동', time: '3일 전', status: '수거 중', lat: 36.548, lng: 128.731 },
+  { id: 18, category: '불법소각', place: '옥동', time: '3일 전', status: '배정', lat: 36.562, lng: 128.699 },
+  { id: 19, category: '볏짚', place: '풍산읍', time: '4일 전', status: '처리 완료', lat: 36.594, lng: 128.588 },
+  { id: 20, category: '폐농약 용기', place: '길안면', time: '4일 전', status: '수거 중', lat: 36.438, lng: 128.903 },
 ];
 
 const categoryData = [
@@ -32,12 +47,13 @@ export default function Home() {
   const [reportOpen, setReportOpen] = useState(false);
   const [introOpen, setIntroOpen] = useState(true);
   const [filter, setFilter] = useState('전체');
+  const [mobileNav, setMobileNav] = useState('dashboard');
   const [notice, setNotice] = useState('');
   const reportsRef = useRef(reports);
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem('andong-environment-reports');
+      const stored = localStorage.getItem('andong-environment-reports-v2');
       if (stored) setReports(JSON.parse(stored) as Report[]);
       if (sessionStorage.getItem('andong-tour-seen')) setIntroOpen(false);
     } catch { /* 발표 환경에서 저장소가 막혀도 시연 데이터로 계속 동작 */ }
@@ -45,7 +61,7 @@ export default function Home() {
 
   useEffect(() => {
     reportsRef.current = reports;
-    try { localStorage.setItem('andong-environment-reports', JSON.stringify(reports)); } catch { /* noop */ }
+    try { localStorage.setItem('andong-environment-reports-v2', JSON.stringify(reports)); } catch { /* noop */ }
   }, [reports]);
 
   const addReport = useCallback((newReport: NewReport) => {
@@ -90,6 +106,17 @@ export default function Home() {
   }, [filter, reports]);
 
   const reportCount = 120 + Math.max(0, reports.length - seedReports.length);
+  const navigateMobile = (target: 'dashboard' | 'reports' | 'collection' | 'performance') => {
+    setMobileNav(target);
+    if (target === 'dashboard') window.scrollTo({ top: 0, behavior: 'smooth' });
+    else document.getElementById(target)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
+  const reportKind = (category: string) => {
+    if (category === '불법소각') return 'burning';
+    if (['과수 전정가지', '볏짚', '고춧대', '기타 농업부산물'].includes(category)) return 'byproduct';
+    return 'material';
+  };
   const closeIntro = (open: boolean) => {
     setIntroOpen(open);
     if (!open) {
@@ -110,7 +137,7 @@ export default function Home() {
       {notice && <div role="status" className="fixed right-4 top-20 z-50 flex max-w-sm items-center gap-3 rounded-2xl bg-[#173f34] px-4 py-3 text-sm font-bold text-white shadow-2xl"><CheckCircle2 className="size-5 text-[#d9f260]" />{notice}</div>}
 
       <section className="mx-auto max-w-[1500px] px-4 py-5 sm:px-7 sm:py-7">
-        <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><div><div className="mb-2 flex items-center gap-2 text-sm font-semibold text-[#36715d]"><span className="inline-flex size-2 rounded-full bg-[#68a38d] shadow-[0_0_0_5px_rgba(104,163,141,.13)]" />시범 운영 중 · 발표용 시뮬레이션 데이터</div><h1 className="text-2xl font-extrabold tracking-[-0.04em] text-[#173f34] sm:text-[32px]">오늘의 안동 환경 현황</h1></div><div className="flex items-center gap-3"><Button variant="outline" className="rounded-xl" onClick={() => setIntroOpen(true)}><Sparkles />자동 시연 보기</Button><p className="hidden text-sm text-muted-foreground lg:block">2026년 9월 4일 · 최근 업데이트 2분 전</p></div></div>
+        <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><h1 className="text-2xl font-extrabold tracking-[-0.04em] text-[#173f34] sm:text-[32px]">오늘의 안동 환경 현황</h1><div className="flex items-center gap-3"><Button variant="outline" className="rounded-xl" onClick={() => setIntroOpen(true)}><Sparkles />자동 시연 보기</Button><p className="hidden text-sm text-muted-foreground lg:block">2026년 9월 4일 · 최근 업데이트 2분 전</p></div></div>
 
         <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
@@ -129,7 +156,7 @@ export default function Home() {
 
           <div className="flex flex-col gap-5">
             <article className="rounded-[22px] border bg-[#173f34] p-5 text-white shadow-[0_14px_40px_rgba(14,55,43,.16)] sm:p-6"><div className="mb-4 flex items-center justify-between"><div className="flex items-center gap-2"><Sparkles className="size-5 text-[#d9f260]" /><h2 className="text-lg font-bold">이번 달 순환 성과</h2></div><BarChart3 className="size-5 text-white/45" /></div><div className="rounded-2xl bg-white/7 p-4"><div className="mb-3 flex items-end justify-between"><p className="text-sm text-white/65">탄소감축 추정량</p><p className="text-2xl font-extrabold text-[#d9f260]">1.36 <span className="text-sm">tCO₂e</span></p></div><div className="h-2 overflow-hidden rounded-full bg-white/10"><div className="h-full w-[68%] rounded-full bg-[#d9f260]" /></div><p className="mt-2 text-xs text-white/45">월간 목표 2.0 tCO₂e의 68% · 시뮬레이션 추정치</p></div><div className="mt-4 grid grid-cols-2 gap-3"><div className="rounded-xl border border-white/10 p-3"><p className="text-xs text-white/55">재활용 전환율</p><p className="mt-1 text-xl font-bold">74%</p></div><div className="rounded-xl border border-white/10 p-3"><p className="text-xs text-white/55">소각 ZERO 마을</p><p className="mt-1 text-xl font-bold">2곳</p></div></div></article>
-            <article className="flex-1 rounded-[22px] border bg-card p-5 shadow-[0_10px_35px_rgba(14,55,43,.05)] sm:p-6"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-lg font-bold text-[#173f34]">최근 신고</h2><p className="text-sm text-muted-foreground">현장 접수와 수거 진행 상황</p></div><button aria-label="신고 전체 보기" className="grid size-9 place-items-center rounded-xl bg-[#eef4f1] text-[#36715d]"><ChevronRight className="size-4" /></button></div><div className="space-y-1">{reports.slice(0, 4).map((report) => <div key={report.id} className="flex items-center gap-3 rounded-xl px-2 py-3 hover:bg-[#f5f8f6]"><span className={`grid size-10 shrink-0 place-items-center rounded-xl ${report.category === '불법소각' ? 'bg-[#fff0e8] text-[#d35c28]' : report.category.includes('전정') ? 'bg-[#eaf2f8] text-[#3a7294]' : 'bg-[#e7f3ed] text-[#36715d]'}`}>{report.category === '불법소각' ? <CircleAlert className="size-5" /> : report.category.includes('전정') ? <Route className="size-5" /> : <Recycle className="size-5" />}</span><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-[#244a3f]">{report.category}</p><p className="text-xs text-muted-foreground">{report.place} · {report.time}</p></div><span className="rounded-full bg-[#eef4f1] px-2.5 py-1 text-xs font-bold text-[#4f6d63]">{report.status}</span></div>)}</div></article>
+            <article id="collection" className="flex-1 scroll-mt-24 rounded-[22px] border bg-card p-5 shadow-[0_10px_35px_rgba(14,55,43,.05)] sm:p-6"><div className="mb-4 flex items-center justify-between"><div><h2 className="text-lg font-bold text-[#173f34]">최근 신고·수거</h2><p className="text-sm text-muted-foreground">현장 접수와 수거 진행 상황</p></div><button aria-label="신고 전체 보기" className="grid size-9 place-items-center rounded-xl bg-[#eef4f1] text-[#36715d]"><ChevronRight className="size-4" /></button></div><div className="space-y-1">{reports.slice(0, 6).map((report) => { const kind = reportKind(report.category); return <div key={report.id} className="flex items-center gap-3 rounded-xl px-2 py-3 hover:bg-[#f5f8f6]"><span className={`grid size-10 shrink-0 place-items-center rounded-xl ${kind === 'burning' ? 'bg-[#fff0e8] text-[#d35c28]' : kind === 'byproduct' ? 'bg-[#eef4dc] text-[#698026]' : 'bg-[#e7f3ed] text-[#36715d]'}`}>{kind === 'burning' ? <Flame className="size-5" /> : kind === 'byproduct' ? <Leaf className="size-5" /> : <Recycle className="size-5" />}</span><div className="min-w-0 flex-1"><p className="truncate text-sm font-bold text-[#244a3f]">{report.category}</p><p className="text-xs text-muted-foreground">{report.place} · {report.time}</p></div><span className="rounded-full bg-[#eef4f1] px-2.5 py-1 text-xs font-bold text-[#4f6d63]">{report.status}</span></div>; })}</div></article>
           </div>
         </div>
 
@@ -145,7 +172,17 @@ export default function Home() {
         </section>
       </section>
 
-      <nav className="fixed inset-x-3 bottom-3 z-40 flex items-center justify-around rounded-2xl border border-white/60 bg-white/95 p-2 shadow-[0_15px_45px_rgba(14,55,43,.18)] backdrop-blur md:hidden"><button className="flex min-w-14 flex-col items-center gap-1 rounded-xl bg-[#e8f2ee] px-2 py-2 text-xs font-bold text-[#205344]"><BarChart3 className="size-5" />현황</button><button onClick={() => document.getElementById('reports')?.scrollIntoView({ behavior: 'smooth' })} className="flex min-w-14 flex-col items-center gap-1 px-2 py-2 text-xs font-semibold text-[#71847d]"><MapPin className="size-5" />지도</button><button onClick={() => setReportOpen(true)} className="-mt-7 grid size-14 place-items-center rounded-2xl bg-[#d9f260] text-[#173f34] shadow-[0_8px_20px_rgba(23,63,52,.25)]"><Camera className="size-6" /><span className="sr-only">신고하기</span></button><button className="flex min-w-14 flex-col items-center gap-1 px-2 py-2 text-xs font-semibold text-[#71847d]"><Recycle className="size-5" />수거</button><button onClick={() => document.getElementById('performance')?.scrollIntoView({ behavior: 'smooth' })} className="flex min-w-14 flex-col items-center gap-1 px-2 py-2 text-xs font-semibold text-[#71847d]"><Users className="size-5" />성과</button></nav>
+      <nav aria-label="모바일 주요 메뉴" className="fixed inset-x-3 bottom-3 z-40 flex items-center justify-around rounded-2xl border border-white/60 bg-white/95 p-2 shadow-[0_15px_45px_rgba(14,55,43,.18)] backdrop-blur md:hidden">
+        {[
+          { id: 'dashboard' as const, label: '현황', icon: BarChart3 },
+          { id: 'reports' as const, label: '지도', icon: MapPin },
+        ].map(({ id, label, icon: Icon }) => <button key={id} aria-current={mobileNav === id ? 'page' : undefined} onClick={() => navigateMobile(id)} className={`flex min-w-14 flex-col items-center gap-1 rounded-xl px-2 py-2 text-xs transition ${mobileNav === id ? 'bg-[#e8ecea] font-bold text-[#205344]' : 'font-semibold text-[#71847d]'}`}><Icon className="size-5" />{label}</button>)}
+        <button onClick={() => setReportOpen(true)} className="-mt-7 grid size-14 place-items-center rounded-2xl bg-[#d9f260] text-[#173f34] shadow-[0_8px_20px_rgba(23,63,52,.25)]"><Camera className="size-6" /><span className="sr-only">신고하기</span></button>
+        {[
+          { id: 'collection' as const, label: '수거', icon: Recycle },
+          { id: 'performance' as const, label: '성과', icon: Users },
+        ].map(({ id, label, icon: Icon }) => <button key={id} aria-current={mobileNav === id ? 'page' : undefined} onClick={() => navigateMobile(id)} className={`flex min-w-14 flex-col items-center gap-1 rounded-xl px-2 py-2 text-xs transition ${mobileNav === id ? 'bg-[#e8ecea] font-bold text-[#205344]' : 'font-semibold text-[#71847d]'}`}><Icon className="size-5" />{label}</button>)}
+      </nav>
 
       {introOpen && <IntroDialog open onOpenChange={closeIntro} onStartReport={() => setReportOpen(true)} />}
       <ReportDialog open={reportOpen} onOpenChange={setReportOpen} onSubmit={addReport} />

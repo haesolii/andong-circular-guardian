@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { MapPin } from 'lucide-react';
+import { Flame, Leaf, MapPin, Recycle } from 'lucide-react';
 
 export type MapReport = {
   id: number;
@@ -18,6 +18,9 @@ declare global {
         load: (callback: () => void) => void;
         Map: new (container: HTMLElement, options: unknown) => { setCenter: (position: unknown) => void };
         LatLng: new (lat: number, lng: number) => unknown;
+        Size: new (width: number, height: number) => unknown;
+        Point: new (x: number, y: number) => unknown;
+        MarkerImage: new (src: string, size: unknown, options?: unknown) => unknown;
         Marker: new (options: unknown) => { setMap: (map: unknown) => void };
         MarkerClusterer: new (options: unknown) => unknown;
       };
@@ -25,13 +28,17 @@ declare global {
   }
 }
 
-const fallbackMarkers = [
-  { x: 28, y: 33, count: 12, level: 'high' },
-  { x: 58, y: 25, count: 7, level: 'mid' },
-  { x: 72, y: 56, count: 9, level: 'high' },
-  { x: 42, y: 67, count: 4, level: 'low' },
-  { x: 19, y: 72, count: 6, level: 'mid' },
-];
+const reportKind = (category: string) => {
+  if (category === '불법소각') return 'burning';
+  if (['과수 전정가지', '볏짚', '고춧대', '기타 농업부산물'].includes(category)) return 'byproduct';
+  return 'material';
+};
+
+const markerAsset = {
+  material: '/markers/farm-material.svg',
+  byproduct: '/markers/agri-byproduct.svg',
+  burning: '/markers/illegal-burning.svg',
+};
 
 export function KakaoMap({ reports }: { reports: MapReport[] }) {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -47,11 +54,16 @@ export function KakaoMap({ reports }: { reports: MapReport[] }) {
         if (!window.kakao || !mapRef.current) return;
         const center = new window.kakao.maps.LatLng(36.5684, 128.7294);
         const map = new window.kakao.maps.Map(mapRef.current, { center, level: 9 });
+        const markerImages = Object.fromEntries(Object.entries(markerAsset).map(([kind, src]) => [
+          kind,
+          new window.kakao!.maps.MarkerImage(src, new window.kakao!.maps.Size(36, 42), { offset: new window.kakao!.maps.Point(18, 42) }),
+        ]));
         const markers = reports.map((report) => new window.kakao!.maps.Marker({
           position: new window.kakao!.maps.LatLng(report.lat, report.lng),
           title: `${report.place} · ${report.category}`,
+          image: markerImages[reportKind(report.category)],
         }));
-        new window.kakao.maps.MarkerClusterer({ map, averageCenter: true, minLevel: 7, markers });
+        new window.kakao.maps.MarkerClusterer({ map, averageCenter: true, minLevel: 11, markers });
         setReady(true);
       });
     };
@@ -85,13 +97,17 @@ export function KakaoMap({ reports }: { reports: MapReport[] }) {
           <span className="absolute left-[55%] top-[16%] text-xs font-bold text-[#55766b]">와룡면</span>
           <span className="absolute right-[16%] top-[49%] text-xs font-bold text-[#55766b]">임하면</span>
           <span className="absolute bottom-[20%] left-[38%] text-xs font-bold text-[#55766b]">길안면</span>
-          {fallbackMarkers.map((marker) => (
-            <button key={`${marker.x}-${marker.y}`} aria-label={`신고 ${marker.count}건`} className={`absolute grid size-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-4 border-white text-xs font-extrabold text-white shadow-[0_8px_20px_rgba(23,63,52,.24)] transition hover:scale-110 ${marker.level === 'high' ? 'bg-[#e7723c]' : marker.level === 'mid' ? 'bg-[#d5a53b]' : 'bg-[#36715d]'}`} style={{ left: `${marker.x}%`, top: `${marker.y}%` }}>{marker.count}</button>
-          ))}
+          {reports.slice(0, 15).map((report) => {
+            const kind = reportKind(report.category);
+            const x = Math.min(90, Math.max(10, 10 + ((report.lng - 128.48) / 0.47) * 80));
+            const y = Math.min(90, Math.max(10, 10 + ((36.78 - report.lat) / 0.36) * 80));
+            const Icon = kind === 'burning' ? Flame : kind === 'byproduct' ? Leaf : Recycle;
+            return <button key={report.id} aria-label={`${report.place} ${report.category}`} title={`${report.place} · ${report.category}`} className={`absolute grid size-9 -translate-x-1/2 -translate-y-full place-items-center rounded-full rounded-bl-md border-2 border-white text-white shadow-[0_7px_16px_rgba(23,63,52,.24)] transition hover:z-10 hover:scale-110 ${kind === 'burning' ? 'bg-[#e25d36]' : kind === 'byproduct' ? 'bg-[#88a832]' : 'bg-[#247b72]'}`} style={{ left: `${x}%`, top: `${y}%` }}><Icon className="size-[17px]" /></button>;
+          })}
           <div className="absolute right-4 top-4 flex items-center gap-2 rounded-xl bg-white/90 px-3 py-2 text-xs font-bold text-[#41675b] shadow-sm backdrop-blur"><MapPin className="size-4 text-[#e7723c]" />{appKey ? loadFailed ? '카카오맵 연결을 확인해 주세요' : '카카오맵 불러오는 중' : '카카오맵 키 입력 전 예비 모드'}</div>
         </div>
       )}
-      <div className="absolute bottom-4 left-4 z-10 flex items-center gap-3 rounded-xl border border-white/70 bg-white/90 px-3 py-2 text-xs font-semibold text-[#47665c] shadow-sm backdrop-blur"><span className="flex items-center gap-1"><i className="size-2 rounded-full bg-[#36715d]" />낮음</span><span className="flex items-center gap-1"><i className="size-2 rounded-full bg-[#d5a53b]" />주의</span><span className="flex items-center gap-1"><i className="size-2 rounded-full bg-[#e7723c]" />집중</span></div>
+      <div className="absolute bottom-4 left-4 z-10 flex items-center gap-3 rounded-xl border border-white/70 bg-white/90 px-3 py-2 text-xs font-semibold text-[#47665c] shadow-sm backdrop-blur"><span className="flex items-center gap-1"><Recycle className="size-3.5 text-[#247b72]" />폐농자재</span><span className="flex items-center gap-1"><Leaf className="size-3.5 text-[#88a832]" />농업부산물</span><span className="flex items-center gap-1"><Flame className="size-3.5 text-[#e25d36]" />불법소각</span></div>
     </div>
   );
 }
