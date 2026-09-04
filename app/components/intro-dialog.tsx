@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ArrowRight, Camera, CheckCircle2, MapPinned, Recycle, Sparkles, Users } from 'lucide-react';
+import { ArrowRight, Camera, CheckCircle2, MapPinned, Recycle, Sparkles, Users, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
@@ -19,8 +19,9 @@ export function IntroDialog({ open, onOpenChange, onStartReport }: { open: boole
   const finish = () => { onOpenChange(false); setIndex(0); };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent showCloseButton className="overflow-hidden rounded-[26px] p-0 sm:max-w-xl">
+    <Dialog open={open} onOpenChange={(nextOpen) => nextOpen ? onOpenChange(true) : finish()}>
+      <DialogContent showCloseButton={false} className="max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-[26px] p-0 sm:max-w-xl">
+        <Button type="button" variant="ghost" size="icon-sm" aria-label="안내 닫기" onClick={finish} className="absolute right-3 top-3 z-20 rounded-full bg-black/20 text-white hover:bg-black/35 hover:text-white"><X className="size-4" /></Button>
         <div className="bg-[#173f34] px-6 pb-7 pt-6 text-white sm:px-8">
           <div className="mb-7 flex items-center gap-2 text-sm font-bold text-[#d9f260]"><Sparkles className="size-4" />60초로 보는 안동 순환지킴이</div>
           <DialogHeader>
