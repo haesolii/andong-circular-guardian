@@ -26,7 +26,8 @@ export function ReportDialog({ open, onOpenChange, onSubmit }: { open: boolean; 
   const [position, setPosition] = useState<{ lat: number; lng: number; place: string }>();
   const [locationState, setLocationState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
   const [analyzing, setAnalyzing] = useState(false);
-  const [analyzed, setAnalyzed] = useState(false);
+  const [analysis, setAnalysis] = useState<{ category: string; confidence: number; reason: string }>();
+  const [analysisError, setAnalysisError] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -37,16 +38,37 @@ export function ReportDialog({ open, onOpenChange, onSubmit }: { open: boolean; 
   const chooseImage = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setAnalysis(undefined);
+      setAnalysisError('10MB 이하의 사진을 선택해 주세요.');
+      return;
+    }
     const reader = new FileReader();
-    reader.onload = () => {
-      setImage(String(reader.result));
+    reader.onload = async () => {
+      const nextImage = String(reader.result);
+      setImage(nextImage);
       setAnalyzing(true);
-      setAnalyzed(false);
-      window.setTimeout(() => {
-        setCategory('폐비닐');
+      setAnalysis(undefined);
+      setAnalysisError('');
+      try {
+        const response = await fetch('/api/classify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ image: nextImage }),
+        });
+        const result = await response.json() as { category?: string; confidence?: number; reason?: string; error?: string };
+        if (!response.ok || !result.category) throw new Error(result.error || 'AI 분석을 완료하지 못했습니다.');
+        setCategory(result.category);
+        setAnalysis({
+          category: result.category,
+          confidence: Number(result.confidence) || 0,
+          reason: result.reason || '사진 속 주요 대상을 기준으로 분류했습니다.',
+        });
+      } catch (error) {
+        setAnalysisError(error instanceof Error ? error.message : 'AI 분석을 완료하지 못했습니다.');
+      } finally {
         setAnalyzing(false);
-        setAnalyzed(true);
-      }, 1400);
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -58,8 +80,16 @@ export function ReportDialog({ open, onOpenChange, onSubmit }: { open: boolean; 
       return;
     }
     navigator.geolocation.getCurrentPosition(
-      ({ coords }) => {
-        setPosition({ lat: coords.latitude, lng: coords.longitude, place: '현재 위치' });
+      async ({ coords }) => {
+        let place = '현재 위치';
+        try {
+          const response = await fetch(`/api/location?lat=${coords.latitude}&lng=${coords.longitude}`);
+          const result = await response.json() as { place?: string };
+          if (result.place) place = result.place;
+        } catch {
+          // 좌표는 확보했으므로 주소 변환 실패와 관계없이 신고를 계속한다.
+        }
+        setPosition({ lat: coords.latitude, lng: coords.longitude, place });
         setLocationState('done');
       },
       () => {
@@ -75,7 +105,8 @@ export function ReportDialog({ open, onOpenChange, onSubmit }: { open: boolean; 
     onSubmit({ category, description, ...location, image });
     setImage(undefined);
     setDescription('');
-    setAnalyzed(false);
+    setAnalysis(undefined);
+    setAnalysisError('');
     onOpenChange(false);
   };
 
@@ -97,7 +128,8 @@ export function ReportDialog({ open, onOpenChange, onSubmit }: { open: boolean; 
               {image && <span className="absolute bottom-3 right-3 rounded-lg bg-black/65 px-3 py-1.5 text-xs font-bold text-white">사진 변경</span>}
             </label>
             {analyzing && <div className="mt-3 rounded-xl bg-[#eef4f1] p-3"><Progress value={66}><ProgressLabel className="flex items-center gap-2 text-[#36715d]"><LoaderCircle className="size-4 animate-spin" />AI가 유형을 확인하고 있습니다</ProgressLabel><ProgressValue>{() => '66%'}</ProgressValue></Progress></div>}
-            {analyzed && <div className="mt-3 flex items-center gap-2 rounded-xl border border-[#cfe0d9] bg-[#f4faf6] p-3 text-sm font-semibold text-[#2f6654]"><Sparkles className="size-4" />AI 추천: 폐비닐 <span className="ml-auto text-xs text-[#628177]">신뢰도 94%</span></div>}
+            {analysis && <div className="mt-3 rounded-xl border border-[#cfe0d9] bg-[#f4faf6] p-3 text-sm text-[#2f6654]"><div className="flex items-center gap-2 font-semibold"><Sparkles className="size-4" />AI 추천: {analysis.category}<span className="ml-auto text-xs text-[#628177]">신뢰도 {analysis.confidence}%</span></div><p className="mt-1.5 text-xs leading-relaxed text-[#5d7a70]">{analysis.reason}</p></div>}
+            {analysisError && <div className="mt-3 rounded-xl border border-[#efd6c8] bg-[#fff7f2] p-3 text-xs font-medium text-[#9a512f]">{analysisError} 유형은 아래에서 직접 선택할 수 있습니다.</div>}
           </section>
 
           <section>

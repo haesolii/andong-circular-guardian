@@ -36,6 +36,7 @@ const fallbackMarkers = [
 export function KakaoMap({ reports }: { reports: MapReport[] }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const [ready, setReady] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const appKey = process.env.NEXT_PUBLIC_KAKAO_MAP_KEY;
 
   useEffect(() => {
@@ -66,6 +67,7 @@ export function KakaoMap({ reports }: { reports: MapReport[] }) {
     script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${appKey}&autoload=false&libraries=clusterer`;
     script.async = true;
     script.addEventListener('load', initialize, { once: true });
+    script.addEventListener('error', () => setLoadFailed(true), { once: true });
     document.head.appendChild(script);
   }, [appKey, reports]);
 
@@ -86,7 +88,7 @@ export function KakaoMap({ reports }: { reports: MapReport[] }) {
           {fallbackMarkers.map((marker) => (
             <button key={`${marker.x}-${marker.y}`} aria-label={`신고 ${marker.count}건`} className={`absolute grid size-11 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-4 border-white text-xs font-extrabold text-white shadow-[0_8px_20px_rgba(23,63,52,.24)] transition hover:scale-110 ${marker.level === 'high' ? 'bg-[#e7723c]' : marker.level === 'mid' ? 'bg-[#d5a53b]' : 'bg-[#36715d]'}`} style={{ left: `${marker.x}%`, top: `${marker.y}%` }}>{marker.count}</button>
           ))}
-          <div className="absolute right-4 top-4 flex items-center gap-2 rounded-xl bg-white/90 px-3 py-2 text-xs font-bold text-[#41675b] shadow-sm backdrop-blur"><MapPin className="size-4 text-[#e7723c]" />카카오맵 키 입력 전 예비 모드</div>
+          <div className="absolute right-4 top-4 flex items-center gap-2 rounded-xl bg-white/90 px-3 py-2 text-xs font-bold text-[#41675b] shadow-sm backdrop-blur"><MapPin className="size-4 text-[#e7723c]" />{appKey ? loadFailed ? '카카오맵 연결을 확인해 주세요' : '카카오맵 불러오는 중' : '카카오맵 키 입력 전 예비 모드'}</div>
         </div>
       )}
       <div className="absolute bottom-4 left-4 z-10 flex items-center gap-3 rounded-xl border border-white/70 bg-white/90 px-3 py-2 text-xs font-semibold text-[#47665c] shadow-sm backdrop-blur"><span className="flex items-center gap-1"><i className="size-2 rounded-full bg-[#36715d]" />낮음</span><span className="flex items-center gap-1"><i className="size-2 rounded-full bg-[#d5a53b]" />주의</span><span className="flex items-center gap-1"><i className="size-2 rounded-full bg-[#e7723c]" />집중</span></div>
