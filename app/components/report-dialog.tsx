@@ -43,6 +43,7 @@ export function ReportDialog({ open, onOpenChange, onSubmit }: { open: boolean; 
       setAnalysisError('10MB 이하의 사진을 선택해 주세요.');
       return;
     }
+    locate();
     const reader = new FileReader();
     reader.onload = async () => {
       const nextImage = String(reader.result);
@@ -116,7 +117,7 @@ export function ReportDialog({ open, onOpenChange, onSubmit }: { open: boolean; 
         <DialogHeader>
           <div className="mb-1 flex items-center gap-2 text-sm font-bold text-[#36715d]"><Camera className="size-4" />현장 환경 신고</div>
           <DialogTitle className="text-xl font-extrabold tracking-tight text-[#173f34]">사진 한 장으로 신고하기</DialogTitle>
-          <DialogDescription>사진과 위치를 확인한 뒤 환경관리단에 전달합니다.</DialogDescription>
+          <DialogDescription>사진을 찍으면 현재 위치와 신고 유형을 자동으로 확인합니다.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-5">
@@ -136,7 +137,7 @@ export function ReportDialog({ open, onOpenChange, onSubmit }: { open: boolean; 
             <p className="mb-2 text-sm font-bold text-[#284e43]">2. 신고 위치</p>
             <Button type="button" variant="outline" className="h-12 w-full justify-start rounded-xl border-[#cbdad4] px-4" onClick={locate} disabled={locationState === 'loading'}>
               {locationState === 'loading' ? <LoaderCircle className="animate-spin" /> : locationState === 'done' ? <Check className="text-[#36715d]" /> : <Crosshair className="text-[#e7723c]" />}
-              <span className="text-left"><strong className="block text-sm">{locationState === 'done' ? position?.place : locationState === 'error' ? '위치 권한이 없어 시연 위치를 사용합니다' : '현재 위치 자동 첨부'}</strong>{position && <small className="text-xs text-muted-foreground">{position.lat.toFixed(5)}, {position.lng.toFixed(5)}</small>}</span>
+              <span className="text-left"><strong className="block text-sm">{locationState === 'loading' ? '사진 위치를 확인하고 있습니다' : locationState === 'done' ? position?.place : locationState === 'error' ? '위치 권한이 없어 시연 위치를 사용합니다' : '사진 촬영 시 현재 위치 자동 첨부'}</strong>{position && <small className="text-xs text-muted-foreground">{position.lat.toFixed(5)}, {position.lng.toFixed(5)}</small>}</span>
             </Button>
           </section>
 

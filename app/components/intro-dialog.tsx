@@ -1,8 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Camera, CheckCircle2, MapPinned, Recycle, Sparkles, Users, X } from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 
 const cards = [
@@ -14,20 +13,33 @@ const cards = [
 
 export function IntroDialog({ open, onOpenChange, onStartReport }: { open: boolean; onOpenChange: (open: boolean) => void; onStartReport: () => void }) {
   const [index, setIndex] = useState(0);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const card = cards[index];
   const Icon = card.icon;
   const finish = () => { onOpenChange(false); setIndex(0); };
 
+  useEffect(() => {
+    if (!open) return;
+    closeButtonRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') finish();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [open]);
+
+  if (!open) return null;
+
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => nextOpen ? onOpenChange(true) : finish()}>
-      <DialogContent showCloseButton={false} className="max-h-[calc(100dvh-1.5rem)] overflow-y-auto rounded-[26px] p-0 sm:max-w-xl">
-        <Button type="button" variant="ghost" size="icon-sm" aria-label="안내 닫기" onClick={finish} className="absolute right-3 top-3 z-20 rounded-full bg-black/20 text-white hover:bg-black/35 hover:text-white"><X className="size-4" /></Button>
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/20 p-3 backdrop-blur-xs" onMouseDown={(event) => { if (event.target === event.currentTarget) finish(); }}>
+      <section role="dialog" aria-modal="true" aria-labelledby="intro-title" aria-describedby="intro-description" className="relative grid max-h-[calc(100dvh-1.5rem)] w-full max-w-xl overflow-y-auto rounded-[26px] bg-popover text-sm text-popover-foreground shadow-2xl ring-1 ring-foreground/10">
+        <Button ref={closeButtonRef} type="button" variant="ghost" size="icon-sm" aria-label="안내 닫기" onClick={finish} className="absolute right-3 top-3 z-20 rounded-full bg-black/20 text-white hover:bg-black/35 hover:text-white"><X className="size-4" /></Button>
         <div className="bg-[#173f34] px-6 pb-7 pt-6 text-white sm:px-8">
           <div className="mb-7 flex items-center gap-2 text-sm font-bold text-[#d9f260]"><Sparkles className="size-4" />60초로 보는 안동 순환지킴이</div>
-          <DialogHeader>
-            <DialogTitle className="text-2xl font-extrabold leading-tight tracking-[-0.035em] sm:text-3xl">사진 한 장이<br />마을의 순환을 시작합니다.</DialogTitle>
-            <DialogDescription className="mt-2 text-white/60">신고부터 수거·자원화·성과관리까지 하나로 연결합니다.</DialogDescription>
-          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <h2 id="intro-title" className="text-2xl font-extrabold leading-tight tracking-[-0.035em] sm:text-3xl">사진 한 장이<br />마을의 순환을 시작합니다.</h2>
+            <p id="intro-description" className="mt-2 text-sm text-white/60">신고부터 수거·자원화·성과관리까지 하나로 연결합니다.</p>
+          </div>
         </div>
         <div className="p-6 sm:p-8">
           <div className="mb-6 flex items-start gap-4">
@@ -40,7 +52,7 @@ export function IntroDialog({ open, onOpenChange, onStartReport }: { open: boole
             {index < cards.length - 1 ? <Button className="h-11 rounded-xl bg-[#173f34] px-5" onClick={() => setIndex((current) => current + 1)}>다음 단계<ArrowRight /></Button> : <Button className="h-11 rounded-xl bg-[#d9f260] px-5 font-bold text-[#173f34] hover:bg-[#e6fa86]" onClick={finish}><CheckCircle2 />현황판 둘러보기</Button>}
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      </section>
+    </div>
   );
 }

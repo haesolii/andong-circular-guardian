@@ -30,7 +30,7 @@ declare global {
 
 const reportKind = (category: string) => {
   if (category === '불법소각') return 'burning';
-  if (['과수 전정가지', '볏짚', '고춧대', '기타 농업부산물'].includes(category)) return 'byproduct';
+  if (['농업부산물', '과수 전정가지', '볏짚', '고춧대', '기타 농업부산물'].includes(category)) return 'byproduct';
   return 'material';
 };
 

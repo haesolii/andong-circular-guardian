@@ -67,6 +67,7 @@ export default function Home() {
   const addReport = useCallback((newReport: NewReport) => {
     const report: Report = { ...newReport, id: Date.now(), time: '방금 전', status: '접수' };
     setReports((current) => [report, ...current]);
+    setFilter('전체');
     setNotice(`${newReport.category} 신고가 환경관리단에 접수되었습니다.`);
     window.setTimeout(() => setNotice(''), 3500);
     return report;
@@ -101,7 +102,7 @@ export default function Home() {
   const filteredReports = useMemo(() => {
     if (filter === '전체') return reports;
     if (filter === '폐농자재') return reports.filter((report) => ['폐비닐', '폐농약 용기', '폐농자재'].includes(report.category));
-    if (filter === '농업부산물') return reports.filter((report) => ['과수 전정가지', '볏짚', '고춧대', '기타 농업부산물'].includes(report.category));
+    if (filter === '농업부산물') return reports.filter((report) => ['농업부산물', '과수 전정가지', '볏짚', '고춧대', '기타 농업부산물'].includes(report.category));
     return reports.filter((report) => report.category === '불법소각');
   }, [filter, reports]);
 
@@ -114,7 +115,7 @@ export default function Home() {
 
   const reportKind = (category: string) => {
     if (category === '불법소각') return 'burning';
-    if (['과수 전정가지', '볏짚', '고춧대', '기타 농업부산물'].includes(category)) return 'byproduct';
+    if (['농업부산물', '과수 전정가지', '볏짚', '고춧대', '기타 농업부산물'].includes(category)) return 'byproduct';
     return 'material';
   };
   const closeIntro = (open: boolean) => {
