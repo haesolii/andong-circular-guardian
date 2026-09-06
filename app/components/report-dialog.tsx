@@ -15,12 +15,14 @@ export type NewReport = {
   lng: number;
   place: string;
   image?: string;
+  photo?: File;
 };
 
 const categories = ['폐비닐', '폐농약 용기', '폐농자재', '과수 전정가지', '볏짚', '고춧대', '불법소각', '불법투기', '기타 농업부산물'];
 
-export function ReportDialog({ open, onOpenChange, onSubmit }: { open: boolean; onOpenChange: (open: boolean) => void; onSubmit: (report: NewReport) => void }) {
+export function ReportDialog({ open, onOpenChange, onSubmit }: { open: boolean; onOpenChange: (open: boolean) => void; onSubmit: (report: NewReport) => Promise<void> }) {
   const [image, setImage] = useState<string>();
+  const [photo, setPhoto] = useState<File>();
   const [category, setCategory] = useState('폐비닐');
   const [description, setDescription] = useState('');
   const [position, setPosition] = useState<{ lat: number; lng: number; place: string }>();
@@ -28,11 +30,14 @@ export function ReportDialog({ open, onOpenChange, onSubmit }: { open: boolean; 
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<{ category: string; confidence: number; reason: string }>();
   const [analysisError, setAnalysisError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
 
   useEffect(() => {
     if (!open) return;
     setPosition(undefined);
     setLocationState('idle');
+    setSubmitError('');
   }, [open]);
 
   const chooseImage = (event: ChangeEvent<HTMLInputElement>) => {
@@ -43,6 +48,7 @@ export function ReportDialog({ open, onOpenChange, onSubmit }: { open: boolean; 
       setAnalysisError('10MB 이하의 사진을 선택해 주세요.');
       return;
     }
+    setPhoto(file);
     locate();
     const reader = new FileReader();
     reader.onload = async () => {
@@ -101,22 +107,31 @@ export function ReportDialog({ open, onOpenChange, onSubmit }: { open: boolean; 
     );
   };
 
-  const submit = () => {
+  const submit = async () => {
     const location = position ?? { lat: 36.5684, lng: 128.7294, place: '안동시청 인근 · 시연 위치' };
-    onSubmit({ category, description, ...location, image });
-    setImage(undefined);
-    setDescription('');
-    setAnalysis(undefined);
-    setAnalysisError('');
-    onOpenChange(false);
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      await onSubmit({ category, description, ...location, image, photo });
+      setImage(undefined);
+      setPhoto(undefined);
+      setDescription('');
+      setAnalysis(undefined);
+      setAnalysisError('');
+      onOpenChange(false);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : '현장 기록을 저장하지 못했습니다.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[92vh] overflow-y-auto rounded-[24px] p-5 sm:max-w-lg sm:p-6">
         <DialogHeader>
-          <div className="mb-1 flex items-center gap-2 text-sm font-bold text-[#36715d]"><Camera className="size-4" />현장 환경 신고</div>
-          <DialogTitle className="text-xl font-extrabold tracking-tight text-[#173f34]">사진 한 장으로 신고하기</DialogTitle>
+          <div className="mb-1 flex items-center gap-2 text-sm font-bold text-[#36715d]"><Camera className="size-4" />농촌환경관리 현장 업무</div>
+          <DialogTitle className="text-xl font-extrabold tracking-tight text-[#173f34]">사진 한 장으로 현장 기록</DialogTitle>
           <DialogDescription>사진을 찍으면 현재 위치와 신고 유형을 자동으로 확인합니다.</DialogDescription>
         </DialogHeader>
 
@@ -147,11 +162,12 @@ export function ReportDialog({ open, onOpenChange, onSubmit }: { open: boolean; 
           </section>
 
           <section><label htmlFor="description" className="mb-2 block text-sm font-bold text-[#284e43]">추가 설명 <span className="font-normal text-muted-foreground">(선택)</span></label><Textarea id="description" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="수량, 접근 방법 등 현장 상황을 적어주세요." className="min-h-20 rounded-xl" /></section>
+          {submitError && <p role="alert" className="rounded-xl border border-[#efd6c8] bg-[#fff7f2] p-3 text-sm font-medium text-[#9a512f]">{submitError}</p>}
         </div>
 
         <DialogFooter className="mt-1 -mx-5 -mb-5 p-4 sm:-mx-6 sm:-mb-6">
-          <Button variant="outline" className="h-11 rounded-xl px-5" onClick={() => onOpenChange(false)}>취소</Button>
-          <Button className="h-11 rounded-xl bg-[#173f34] px-6 text-white hover:bg-[#245747]" onClick={submit}><MapPin />신고 접수</Button>
+          <Button variant="outline" className="h-11 rounded-xl px-5" onClick={() => onOpenChange(false)} disabled={submitting}>취소</Button>
+          <Button className="h-11 rounded-xl bg-[#173f34] px-6 text-white hover:bg-[#245747]" onClick={submit} disabled={submitting}>{submitting ? <LoaderCircle className="animate-spin" /> : <MapPin />}{submitting ? '클라우드 저장 중' : '현장 기록 저장'}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

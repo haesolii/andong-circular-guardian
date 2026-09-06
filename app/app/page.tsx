@@ -8,7 +8,7 @@ import { KakaoMap, type MapReport } from '@/components/kakao-map';
 import { IntroDialog } from '@/components/intro-dialog';
 import { ReportDialog, type NewReport } from '@/components/report-dialog';
 
-type Report = MapReport & { time: string; status: string; description?: string; image?: string };
+type Report = MapReport & { time: string; status: string; description?: string; image?: string; createdAt?: string };
 
 const seedReports: Report[] = [
   { id: 1, category: '폐비닐', place: '풍산읍', time: '12분 전', status: '접수', lat: 36.579, lng: 128.575 },
@@ -33,7 +33,7 @@ const seedReports: Report[] = [
   { id: 20, category: '폐농약 용기', place: '길안면', time: '4일 전', status: '수거 중', lat: 36.438, lng: 128.903 },
 ];
 
-const categoryData = [
+const baseCategoryData = [
   { name: '폐비닐', value: 31 }, { name: '전정가지', value: 26 }, { name: '폐농약용기', value: 19 }, { name: '고춧대', value: 15 }, { name: '불법소각', value: 11 }, { name: '기타', value: 18 },
 ];
 const villageRanking = [
@@ -49,28 +49,63 @@ export default function Home() {
   const [filter, setFilter] = useState('전체');
   const [mobileNav, setMobileNav] = useState('dashboard');
   const [notice, setNotice] = useState('');
+  const [syncState, setSyncState] = useState<'connecting' | 'online' | 'offline'>('connecting');
   const reportsRef = useRef(reports);
 
   useEffect(() => {
     try {
-      const stored = localStorage.getItem('andong-environment-reports-v2');
-      if (stored) setReports(JSON.parse(stored) as Report[]);
       if (sessionStorage.getItem('andong-tour-seen')) setIntroOpen(false);
     } catch { /* 발표 환경에서 저장소가 막혀도 시연 데이터로 계속 동작 */ }
   }, []);
 
   useEffect(() => {
     reportsRef.current = reports;
-    try { localStorage.setItem('andong-environment-reports-v2', JSON.stringify(reports)); } catch { /* noop */ }
   }, [reports]);
 
-  const addReport = useCallback((newReport: NewReport) => {
-    const report: Report = { ...newReport, id: Date.now(), time: '방금 전', status: '접수' };
-    setReports((current) => [report, ...current]);
+  const formatTime = useCallback((createdAt?: string) => {
+    if (!createdAt) return '방금 전';
+    const minutes = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 60_000));
+    if (minutes < 1) return '방금 전';
+    if (minutes < 60) return `${minutes}분 전`;
+    if (minutes < 1_440) return `${Math.floor(minutes / 60)}시간 전`;
+    return `${Math.floor(minutes / 1_440)}일 전`;
+  }, []);
+
+  const loadCloudReports = useCallback(async () => {
+    try {
+      const response = await fetch('/api/reports', { cache: 'no-store' });
+      const result = await response.json() as { reports?: Array<Omit<Report, 'time'>> };
+      if (!response.ok || !result.reports) throw new Error('sync failed');
+      const cloudReports = result.reports.map((report) => ({ ...report, time: formatTime(report.createdAt) }));
+      setReports([...cloudReports, ...seedReports]);
+      setSyncState('online');
+    } catch {
+      setSyncState('offline');
+    }
+  }, [formatTime]);
+
+  useEffect(() => {
+    void loadCloudReports();
+    const interval = window.setInterval(() => void loadCloudReports(), 5_000);
+    return () => window.clearInterval(interval);
+  }, [loadCloudReports]);
+
+  const addReport = useCallback(async (newReport: NewReport) => {
+    const form = new FormData();
+    form.set('category', newReport.category);
+    form.set('description', newReport.description);
+    form.set('lat', String(newReport.lat));
+    form.set('lng', String(newReport.lng));
+    form.set('place', newReport.place);
+    if (newReport.photo) form.set('photo', newReport.photo);
+    const response = await fetch('/api/reports', { method: 'POST', body: form });
+    const result = await response.json() as { report?: Omit<Report, 'time'>; error?: string };
+    if (!response.ok || !result.report) throw new Error(result.error || '현장 기록을 저장하지 못했습니다.');
+    const report: Report = { ...result.report, time: '방금 전' };
+    setReports((current) => [report, ...current.filter((item) => item.id !== report.id)]);
     setFilter('전체');
     setNotice(`${newReport.category} 신고가 환경관리단에 접수되었습니다.`);
     window.setTimeout(() => setNotice(''), 3500);
-    return report;
   }, []);
 
   useEffect(() => {
@@ -82,17 +117,42 @@ export default function Home() {
         name: 'create_environment_report', title: '환경 신고 접수', description: '안동 환경순환관리단에 새 현장 신고를 접수하고 지도와 현황판을 갱신합니다.',
         inputSchema: { type: 'object', properties: { category: { type: 'string' }, description: { type: 'string' }, lat: { type: 'number' }, lng: { type: 'number' }, place: { type: 'string' } }, required: ['category', 'lat', 'lng', 'place'], additionalProperties: false },
         annotations: { readOnlyHint: false, untrustedContentHint: false },
-        execute(input) {
+        async execute(input) {
           const value = input as Partial<NewReport>;
           if (!value.category || typeof value.lat !== 'number' || typeof value.lng !== 'number' || !value.place) throw new Error('category, lat, lng, place가 필요합니다.');
-          const created = addReport({ category: value.category, description: value.description ?? '', lat: value.lat, lng: value.lng, place: value.place });
-          return { id: created.id, status: created.status, category: created.category, place: created.place };
+          await addReport({ category: value.category, description: value.description ?? '', lat: value.lat, lng: value.lng, place: value.place });
+          return { saved: true, status: '접수', category: value.category, place: value.place };
+        },
+      }, { signal: lifecycle.signal });
+      await context.registerTool({
+        name: 'update_environment_report_status', title: '현장 처리상태 변경', description: '공유된 현장 기록의 업무 상태를 접수, 배정, 수거 중, 처리 완료 중 하나로 변경합니다.',
+        inputSchema: { type: 'object', properties: { id: { type: 'string' }, status: { type: 'string', enum: ['접수', '배정', '수거 중', '처리 완료'] } }, required: ['id', 'status'], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false },
+        async execute(input) {
+          const { id, status } = input as { id?: string; status?: string };
+          if (!id || !status) throw new Error('id와 status가 필요합니다.');
+          const response = await fetch(`/api/reports/${encodeURIComponent(id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+          const result = await response.json() as { error?: string };
+          if (!response.ok) throw new Error(result.error || '처리 상태를 변경하지 못했습니다.');
+          setReports((current) => current.map((report) => report.id === id ? { ...report, status } : report));
+          return { id, status, saved: true };
         },
       }, { signal: lifecycle.signal });
       await context.registerTool({
         name: 'get_environment_summary', title: '환경 현황 조회', description: '현재 화면의 신고 건수와 주요 순환 성과를 읽습니다.',
         inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: false },
         execute() { return { reports: 120 + Math.max(0, reportsRef.current.length - seedReports.length), recycledTons: 2.8, carbonReductionTco2e: 1.36, jobs: 32 }; },
+      }, { signal: lifecycle.signal });
+      await context.registerTool({
+        name: 'list_priority_environment_reports', title: '우선관리 현장 조회', description: '공유 데이터에서 불법소각과 아직 처리되지 않은 최근 현장을 우선순위로 정리합니다.',
+        inputSchema: { type: 'object', properties: { limit: { type: 'number', minimum: 1, maximum: 20 } }, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: false },
+        execute(input) {
+          const limit = Math.min(20, Math.max(1, Number((input as { limit?: number }).limit) || 5));
+          return reportsRef.current
+            .filter((report) => report.status !== '처리 완료')
+            .sort((a, b) => Number(b.category === '불법소각') - Number(a.category === '불법소각'))
+            .slice(0, limit)
+            .map(({ id, category, place, status, lat, lng }) => ({ id, category, place, status, lat, lng }));
+        },
       }, { signal: lifecycle.signal });
     };
     void register().catch(() => undefined);
@@ -107,6 +167,18 @@ export default function Home() {
   }, [filter, reports]);
 
   const reportCount = 120 + Math.max(0, reports.length - seedReports.length);
+  const categoryData = useMemo(() => {
+    const live = reports.filter((report) => typeof report.id === 'string');
+    return baseCategoryData.map((entry) => ({
+      ...entry,
+      value: entry.value + live.filter((report) => {
+        if (entry.name === '전정가지') return report.category === '과수 전정가지';
+        if (entry.name === '폐농약용기') return report.category === '폐농약 용기';
+        if (entry.name === '기타') return !['폐비닐', '과수 전정가지', '폐농약 용기', '고춧대', '불법소각'].includes(report.category);
+        return report.category === entry.name;
+      }).length,
+    }));
+  }, [reports]);
   const navigateMobile = (target: 'dashboard' | 'reports' | 'collection' | 'performance') => {
     setMobileNav(target);
     if (target === 'dashboard') window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -129,20 +201,20 @@ export default function Home() {
     <main className="min-h-screen bg-background pb-8 text-foreground">
       <header className="sticky top-0 z-30 border-b border-white/10 bg-[#123c31]/95 text-white backdrop-blur">
         <div className="mx-auto flex h-16 max-w-[1500px] items-center justify-between px-4 sm:px-7">
-          <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-[#d9f260] text-[#123c31] shadow-[0_7px_18px_rgba(217,242,96,.18)]"><Leaf className="size-5" strokeWidth={2.4} /></span><div><p className="text-[17px] font-bold tracking-[-0.02em]">안동 순환지킴이</p><p className="text-xs text-white/60">1마을 2세대 환경관리 플랫폼</p></div></div>
+          <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-[#d9f260] text-[#123c31] shadow-[0_7px_18px_rgba(217,242,96,.18)]"><Leaf className="size-5" strokeWidth={2.4} /></span><div><p className="text-[17px] font-bold tracking-[-0.02em]">안동 순환지킴이</p><p className="text-xs text-white/60">청년 농촌환경관리 업무 플랫폼</p></div></div>
           <Tabs defaultValue="dashboard" className="hidden md:flex"><TabsList className="h-10 bg-white/8 p-1"><TabsTrigger value="dashboard" className="px-4 text-white/65 data-active:bg-white data-active:text-[#123c31]">현황판</TabsTrigger><TabsTrigger value="reports" className="px-4 text-white/65 data-active:bg-white data-active:text-[#123c31]" onClick={() => document.getElementById('reports')?.scrollIntoView({ behavior: 'smooth' })}>신고 관리</TabsTrigger><TabsTrigger value="performance" className="px-4 text-white/65 data-active:bg-white data-active:text-[#123c31]" onClick={() => document.getElementById('performance')?.scrollIntoView({ behavior: 'smooth' })}>성과</TabsTrigger></TabsList></Tabs>
-          <Button className="h-10 rounded-xl bg-[#d9f260] px-4 font-bold text-[#123c31] hover:bg-[#e6fa86]" onClick={() => setReportOpen(true)}><Camera /><span className="hidden sm:inline">사진으로 신고</span><span className="sm:hidden">신고</span></Button>
+          <Button className="h-10 rounded-xl bg-[#d9f260] px-4 font-bold text-[#123c31] hover:bg-[#e6fa86]" onClick={() => setReportOpen(true)}><Camera /><span className="hidden sm:inline">현장 기록</span><span className="sm:hidden">기록</span></Button>
         </div>
       </header>
 
       {notice && <div role="status" className="fixed right-4 top-20 z-50 flex max-w-sm items-center gap-3 rounded-2xl bg-[#173f34] px-4 py-3 text-sm font-bold text-white shadow-2xl"><CheckCircle2 className="size-5 text-[#d9f260]" />{notice}</div>}
 
       <section className="mx-auto max-w-[1500px] px-4 py-5 sm:px-7 sm:py-7">
-        <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><h1 className="text-2xl font-extrabold tracking-[-0.04em] text-[#173f34] sm:text-[32px]">오늘의 안동 환경 현황</h1><div className="flex items-center gap-3"><Button variant="outline" className="rounded-xl" onClick={() => setIntroOpen(true)}><Sparkles />자동 시연 보기</Button><p className="hidden text-sm text-muted-foreground lg:block">2026년 9월 4일 · 최근 업데이트 2분 전</p></div></div>
+        <div className="mb-5 flex flex-col justify-between gap-3 sm:flex-row sm:items-end"><h1 className="text-2xl font-extrabold tracking-[-0.04em] text-[#173f34] sm:text-[32px]">오늘의 안동 환경 현황</h1><div className="flex items-center gap-3"><Button variant="outline" className="rounded-xl" onClick={() => setIntroOpen(true)}><Sparkles />자동 시연 보기</Button><p className="hidden text-sm text-muted-foreground lg:block"><span className={`mr-2 inline-block size-2 rounded-full ${syncState === 'online' ? 'bg-emerald-500' : syncState === 'offline' ? 'bg-orange-500' : 'bg-slate-400'}`} />{syncState === 'online' ? '클라우드 실시간 동기화' : syncState === 'offline' ? '연결 복구 중 · 시연 데이터 표시' : '클라우드 연결 중'}</p></div></div>
 
         <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[
-            { label: '누적 환경 신고', value: String(reportCount), unit: '건', change: '+12%', icon: Camera },
+            { label: '누적 현장 기록', value: String(reportCount), unit: '건', change: '+12%', icon: Camera },
             { label: '자원화 완료', value: '2.8', unit: '톤', change: '74%', icon: Recycle },
             { label: '소각 위험 차단', value: '11', unit: '건', change: '이번 달', icon: Flame },
             { label: '참여 일자리', value: '32', unit: '명', change: '2세대', icon: Users },
@@ -167,8 +239,8 @@ export default function Home() {
         </section>
 
         <section className="mt-5 grid gap-3 sm:grid-cols-3">
-          <article className="rounded-2xl border bg-[#e9f3ee] p-5"><Users className="mb-5 size-6 text-[#36715d]" /><p className="text-sm font-bold text-[#5b766d]">노인 환경지킴이</p><p className="mt-1 text-3xl font-extrabold text-[#173f34]">26명</p><p className="mt-3 text-sm text-[#617a71]">마을 현장 발견·수거·안전 확인</p></article>
-          <article className="rounded-2xl border bg-[#eaf2f8] p-5"><Medal className="mb-5 size-6 text-[#3a7294]" /><p className="text-sm font-bold text-[#5c7483]">청년 코디네이터</p><p className="mt-1 text-3xl font-extrabold text-[#173f34]">6명</p><p className="mt-3 text-sm text-[#617681]">3~5개 마을 데이터·배정 관리</p></article>
+          <article className="rounded-2xl border bg-[#e9f3ee] p-5"><Users className="mb-5 size-6 text-[#36715d]" /><p className="text-sm font-bold text-[#5b766d]">청년 농촌환경관리자</p><p className="mt-1 text-3xl font-extrabold text-[#173f34]">6명</p><p className="mt-3 text-sm text-[#617a71]">현장조사·GIS·파쇄 연계 실무 수행</p></article>
+          <article className="rounded-2xl border bg-[#eaf2f8] p-5"><Medal className="mb-5 size-6 text-[#3a7294]" /><p className="text-sm font-bold text-[#5c7483]">현장 데이터 구축</p><p className="mt-1 text-3xl font-extrabold text-[#173f34]">120농가</p><p className="mt-3 text-sm text-[#617681]">기업형 도구로 남기는 직무경력</p></article>
           <article className="rounded-2xl border bg-[#fff1e8] p-5"><TrendingDown className="mb-5 size-6 text-[#d16432]" /><p className="text-sm font-bold text-[#92634d]">불법소각 감소 추정</p><p className="mt-1 text-3xl font-extrabold text-[#173f34]">31%</p><p className="mt-3 text-sm text-[#806b61]">시범사업 전후 시뮬레이션 기준</p></article>
         </section>
       </section>

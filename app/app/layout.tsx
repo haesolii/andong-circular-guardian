@@ -3,7 +3,9 @@ import './globals.css';
 
 export const metadata: Metadata = {
   title: '안동 순환지킴이',
-  description: '사진 한 장으로 신고부터 수거·자원화까지 연결하는 안동형 환경관리 플랫폼',
+  description: '청년의 농촌환경관리 현장 업무와 데이터 경력을 연결하는 안동형 플랫폼',
+  applicationName: '안동 순환지킴이',
+  manifest: '/manifest.webmanifest',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Flame, Leaf, MapPin, Recycle } from 'lucide-react';
 
 export type MapReport = {
-  id: number;
+  id: number | string;
   lat: number;
   lng: number;
   category: string;
