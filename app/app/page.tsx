@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BarChart3, Camera, CheckCircle2, ChevronRight, Flame, Leaf, MapPin, Medal, Recycle, Sparkles, TrendingDown, Trophy, Users } from 'lucide-react';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
+import Link from 'next/link';
 import { KakaoMap, type MapReport } from '@/components/kakao-map';
 import { IntroDialog } from '@/components/intro-dialog';
 import { ReportDialog, type NewReport } from '@/components/report-dialog';
@@ -203,7 +204,7 @@ export default function Home() {
         <div className="mx-auto flex h-16 max-w-[1500px] items-center justify-between px-4 sm:px-7">
           <div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-2xl bg-[#d9f260] text-[#123c31] shadow-[0_7px_18px_rgba(217,242,96,.18)]"><Leaf className="size-5" strokeWidth={2.4} /></span><div><p className="text-[17px] font-bold tracking-[-0.02em]">안동 순환지킴이</p><p className="text-xs text-white/60">청년 농촌환경관리 업무 플랫폼</p></div></div>
           <Tabs defaultValue="dashboard" className="hidden md:flex"><TabsList className="h-10 bg-white/8 p-1"><TabsTrigger value="dashboard" className="px-4 text-white/65 data-active:bg-white data-active:text-[#123c31]">현황판</TabsTrigger><TabsTrigger value="reports" className="px-4 text-white/65 data-active:bg-white data-active:text-[#123c31]" onClick={() => document.getElementById('reports')?.scrollIntoView({ behavior: 'smooth' })}>신고 관리</TabsTrigger><TabsTrigger value="performance" className="px-4 text-white/65 data-active:bg-white data-active:text-[#123c31]" onClick={() => document.getElementById('performance')?.scrollIntoView({ behavior: 'smooth' })}>성과</TabsTrigger></TabsList></Tabs>
-          <Button className="h-10 rounded-xl bg-[#d9f260] px-4 font-bold text-[#123c31] hover:bg-[#e6fa86]" onClick={() => setReportOpen(true)}><Camera /><span className="hidden sm:inline">현장 기록</span><span className="sm:hidden">기록</span></Button>
+          <div className="flex items-center gap-2"><Link href="/field" className="hidden rounded-xl border border-white/20 px-3 py-2 text-sm font-bold text-white/80 hover:bg-white/10 sm:block">현장 앱</Link><Button className="h-10 rounded-xl bg-[#d9f260] px-4 font-bold text-[#123c31] hover:bg-[#e6fa86]" onClick={() => setReportOpen(true)}><Camera /><span className="hidden sm:inline">현장 기록</span><span className="sm:hidden">기록</span></Button></div>
         </div>
       </header>
 
