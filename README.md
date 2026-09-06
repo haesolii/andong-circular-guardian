@@ -1,34 +1,66 @@
-# 안동 순환지킴이
+# 들녘 — 농촌환경 데이터 플랫폼
 
-사진·GPS 신고부터 수거 배정, 자원화, 탄소 및 일자리 성과까지 연결하는 안동형 농촌 환경관리 발표용 MVP입니다.
+영농부산물을 예측하고, 청년 실무자가 현장을 검증해 분석보고서와 직무 산출물을 남기는 발표용 플랫폼입니다.
+Mintlify 스타일 참조의 흰 배경, 검은 버튼, 절제된 초록색 활성 표시를 적용합니다.
 
-## 구현된 기능
+## 분리된 서비스
 
-- 휴대폰 카메라 촬영 및 사진 업로드
-- GPS 현재 위치 자동 첨부와 권한 거부 시 시연 위치 대체
-- AI 사진 유형 추천 시연 및 Gemini API 연결 준비
-- 카카오맵 JavaScript SDK와 마커 클러스터 연결 준비
-- 유형별 지도 필터 및 신고 현황
-- 소각 ZERO 마을 순위
-- 탄소감축량·자원화량·노인 및 청년 일자리 성과
-- 첫 접속 카드뉴스와 자동 시연 흐름
-- 환경 신고 접수 및 현황 조회 WebMCP 도구
-- 브라우저 로컬 저장을 통한 발표 중 신고 데이터 유지
+- PC 분석 웹: app/ · PREDICT, MAP, DB, REPORT, CAREER
+- 현장 모바일 앱: field-site/ · TASK, FIELD, GPS·사진, 개인 기록
+- UI 전환 버튼 없이 별도 사이트로 배포합니다.
+- 모바일은 PC 웹의 /api/environment를 호출합니다. API 서버는 D1에 기록·업무·보고서를 저장하고 R2에 사진을 저장합니다.
+- GIS는 기존 카카오 등록 도메인의 /map-embed를 사용하므로 새 현장앱 도메인에 지도 키를 노출하지 않습니다.
+- 데이터 갱신: 저장 직후 재조회 + 화면이 활성화된 동안 5초 주기. WebSocket 푸시 방식은 아닙니다.
 
-## 로컬 실행
+## 시연 범위
 
-```bash
-cd app
-npm install
-npm run dev
-```
+- 12개 예시 마을, 36건의 예시 현장자료, 2027년 9–12월 데이터
+- 면적·계수 수정, CSV 양식 다운로드 및 가져오기, 발생량 자동 재계산
+- 마을·기간별 업무 배정, 중복 배정 방지
+- GPS 권한 요청, 실제 좌표·정확도 기록, 사진 저장, 선택적 AI 작물 확인 보조
+- 지도 5개 레이어, 월·지역 필터, 기록 상세 조회, CSV 내보내기
+- 실무자가 직접 분석·제안을 작성하고 서버에 보고서를 저장
+- 직접 입력한 기록과 보고서 기반의 직무 포트폴리오
+- 닫기·다음·다시보기 가능한 카드뉴스 안내
+- 제안된 WebMCP 브라우저 API 기능 감지 및 도구 등록
 
-`app/.env.example`을 복사해 `app/.env.local`을 만들고 필요한 키를 입력합니다. 실제 키 파일은 Git에 포함되지 않습니다.
+현재는 발표용 공용 시연 계정입니다. 개인별 로그인·권한 검증, 공인 경력 인증, 공식 농업데이터 연동은 구현 범위에 포함되지 않습니다.
+예시 데이터는 공식 관측값이 아닙니다. 계수는 가정값이며 마을 위치는 대략적인 배치입니다.
+예측 일치율은 ‘예상과 유사’ 응답 비율입니다. 정량적 예측 정확도 또는 정책 효과를 의미하지 않습니다.
+신고·단속·파쇄 접수·산불 위험 판정·지원 대상 선정 기능은 신규 화면에서 제공하지 않습니다. 기존 reports 테이블과 API는 이전 데이터 보존을 위해 유지합니다.
 
-```env
-NEXT_PUBLIC_KAKAO_MAP_KEY=
-KAKAO_REST_API_KEY=
-GEMINI_API_KEY=
-```
+## 개발
 
-카카오맵 키가 없으면 발표용 예비 지도가 표시되고, 키가 있으면 실제 카카오맵으로 자동 전환됩니다.
+app에서 npm install을 실행한 뒤 npm run dev (3000).
+다른 터미널에서 field-site에서 npm run dev (3001).
+현장 앱은 app의 설치된 의존성을 재사용하며, 독립 배포 산출물에 공통 UI를 번들링합니다.
+
+app/.env.local:
+- NEXT_PUBLIC_KAKAO_MAP_KEY: 카카오 JavaScript 키
+- GEMINI_API_KEY: 서버에서만 사용하는 Gemini 키
+- KAKAO_REST_API_KEY: 기존 역지오코딩 API용 서버 키
+
+실제 키는 Git에 커밋하지 않습니다. 운영 환경의 서버 키는 Sites 비밀변수로 관리합니다.
+
+## 확인
+
+app:
+- npx tsc --noEmit --incremental false
+- node --test tests/environment.test.mjs
+- node tests/environment-api.mjs (로컬 서버·스키마 필요; 생성한 임시 기록만 제거)
+- npm run build
+
+field-site:
+- npm run build
+
+Windows에서 한글/OneDrive 경로의 Vinext 프로덕션 빌드가 오류 없이 종료되는 문제가 있습니다.
+배포 빌드는 소스를 ASCII 임시경로로 복사한 후 수행합니다. 기존 node_modules를 연결하고 공개 지도 키만 환경변수로 전달합니다.
+원본 소스와 검증된 임시 빌드 소스가 같은지 확인한 후 패키징합니다.
+
+## WebMCP 범위
+
+PC: get_environment_summary, navigate_environment_workspace, assign_field_verification
+모바일: list_field_tasks, start_field_verification, list_my_field_records
+시연 브라우저가 document.modelContext를 지원할 때 등록되며, 서버형 MCP 엔드포인트와는 구분됩니다.
+이번 구현에서는 지원 브라우저에서의 실제 도구 호출 검증은 수행하지 못했습니다. UI·HTTP 기능과 타입 검사는 별도로 확인했습니다.
+
