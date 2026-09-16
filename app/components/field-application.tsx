@@ -20,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { NativeSelect } from '@/components/ui/native-select';
 import { Textarea } from '@/components/ui/textarea';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -90,6 +91,10 @@ function VerificationForm({
   const [comparison, setComparison] = useState('');
   const [processing, setProcessing] = useState('');
   const [note, setNote] = useState('');
+  const [areaHa, setAreaHa] = useState('');
+  const [observedTons, setObservedTons] = useState('');
+  const [measurementMethod, setMeasurementMethod] = useState('');
+  const [measurementCoverage, setMeasurementCoverage] = useState('');
   const [gps, setGps] = useState<{
     lat: number;
     lng: number;
@@ -213,6 +218,10 @@ function VerificationForm({
         comparison,
         processing,
         note,
+        areaHa,
+        observedTons,
+        measurementMethod,
+        measurementCoverage,
         lat: String(gps.lat),
         lng: String(gps.lng),
         accuracy: String(gps.accuracy),
@@ -300,6 +309,81 @@ function VerificationForm({
             value={processing}
             onChange={setProcessing}
           />
+        </section>
+        <section className="surface">
+          <details>
+            <summary>
+              표본량 기록 <span className="muted">선택 입력</span>
+            </summary>
+            <p className="subtext">
+              확인한 구역의 면적과 부산물량을 함께 남깁니다. 마을 전체 발생량이
+              아닙니다. 양을 모르면 비워 두세요.
+            </p>
+            <label className="form-label">
+              조사면적 (ha)
+              <Input
+                type="number"
+                inputMode="decimal"
+                min="0.000001"
+                max="100000"
+                step="any"
+                value={areaHa}
+                onChange={(e) => setAreaHa(e.target.value)}
+                placeholder="예: 0.5"
+              />
+            </label>
+            <label className="form-label">
+              확인한 부산물량 (t)
+              <Input
+                type="number"
+                inputMode="decimal"
+                min="0"
+                max="100000"
+                step="any"
+                value={observedTons}
+                onChange={(e) => setObservedTons(e.target.value)}
+                placeholder="예: 0.6 · 1t = 1,000kg"
+              />
+            </label>
+            <label className="form-label">
+              부산물량 확인방법
+              <NativeSelect
+                value={measurementMethod}
+                onChange={(e) => setMeasurementMethod(e.target.value)}
+              >
+                <option value="">선택하세요</option>
+                <option value="weighed">계량 (저울 등)</option>
+                <option value="estimated">현장 추정 (계량 아님)</option>
+              </NativeSelect>
+            </label>
+            <label className="form-label">
+              조사범위
+              <NativeSelect
+                value={measurementCoverage}
+                onChange={(e) => setMeasurementCoverage(e.target.value)}
+              >
+                <option value="">선택하세요</option>
+                <option value="complete">입력한 면적의 부산물 전체 확인</option>
+                <option value="partial">일부만 확인 (비교 제외)</option>
+              </NativeSelect>
+            </label>
+            <p className="data-footnote">
+              ‘발생 완료’이고 같은 작물·예측 월의 전체 표본량일 때만 면적
+              기준으로 비교합니다. 추정값은 계량값과 구분하며, 계수는 자동
+              보정하지 않습니다.
+            </p>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setAreaHa('');
+                setObservedTons('');
+                setMeasurementMethod('');
+                setMeasurementCoverage('');
+              }}
+            >
+              표본량 입력 비우기
+            </Button>
+          </details>
         </section>
         <section className="surface">
           <h2>현장사진</h2>

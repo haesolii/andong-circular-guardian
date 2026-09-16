@@ -43,6 +43,19 @@ export type Verification = {
   photo?: string;
   createdAt: string;
   demo?: boolean;
+  measurement?: {
+    areaHa: number;
+    tons: number;
+    method: 'weighed' | 'estimated';
+    coverage: 'complete' | 'partial';
+  };
+  prediction?: {
+    crop: string;
+    coefficient: number;
+    month: number;
+    source: string;
+    capturedAt: string;
+  };
 };
 export type AnalysisReport = {
   id: string;
@@ -53,6 +66,7 @@ export type AnalysisReport = {
   analysis: string;
   recommendation: string;
   updatedAt: string;
+  evidence?: ReturnType<typeof reportEvidence>;
 };
 export type Task = {
   id: string;
@@ -200,12 +214,191 @@ export function csvCell(value: unknown) {
     '"'
   );
 }
+// Compare the surveyed area only. Never extrapolate a sample to village totals.
+export function compareMeasurement(record: Verification) {
+  const m = record.measurement;
+  const p = record.prediction;
+  if (
+    !m ||
+    !p ||
+    m.coverage !== 'complete' ||
+    record.occurrence !== '발생 완료' ||
+    p.crop !== record.crop ||
+    p.month !== Number(record.period.slice(5)) ||
+    m.areaHa <= 0 ||
+    p.coefficient <= 0
+  )
+    return null;
+  const expectedTons = (m.areaHa * p.coefficient) / 1000;
+  return {
+    expectedTons,
+    differenceTons: m.tons - expectedTons,
+    observedKgPerHa: (m.tons * 1000) / m.areaHa,
+    method: m.method,
+  };
+}
+export function dataQuality(
+  records: Verification[],
+  expectedVillageIds: string[] = [],
+) {
+  const live = records.filter((r) => !r.demo);
+  const gps = live.filter(
+    (r) =>
+      Number.isFinite(r.lat) &&
+      Number.isFinite(r.lng) &&
+      r.lat >= 33 &&
+      r.lat <= 39 &&
+      r.lng >= 124 &&
+      r.lng <= 132,
+  ).length;
+  const photo = live.filter((r) => !!r.photo).length;
+  const comparable = live.filter((r) => compareMeasurement(r) !== null).length;
+  const complete = live.filter(
+    (r) =>
+      crops.includes(r.crop as (typeof crops)[number]) &&
+      occurrenceStates.includes(
+        r.occurrence as (typeof occurrenceStates)[number],
+      ) &&
+      comparisons.includes(r.comparison as (typeof comparisons)[number]) &&
+      processingStates.includes(
+        r.processing as (typeof processingStates)[number],
+      ),
+  ).length;
+  const verifiedVillages = expectedVillageIds.filter((id) =>
+    live.some((r) => r.villageId === id),
+  ).length;
+  const rate = (n: number) =>
+    live.length ? Math.round((n / live.length) * 100) : null;
+  return {
+    total: live.length,
+    gps,
+    photo,
+    comparable,
+    complete,
+    verifiedVillages,
+    expectedVillages: expectedVillageIds.length,
+    gpsRate: rate(gps),
+    photoRate: rate(photo),
+    comparableRate: rate(comparable),
+    missingRate: rate(live.length - complete),
+    coverageRate: expectedVillageIds.length
+      ? Math.round((verifiedVillages / expectedVillageIds.length) * 100)
+      : null,
+  };
+}
+export function recordsGeoJson(records: Verification[]) {
+  return {
+    type: 'FeatureCollection',
+    name: '들녘 직접 입력 현장검증',
+    features: records
+      .filter((r) => !r.demo)
+      .map((r) => ({
+        type: 'Feature',
+        id: r.id,
+        geometry: dataQuality([r]).gps
+          ? { type: 'Point', coordinates: [r.lng, r.lat] }
+          : null,
+        properties: {
+          record_id: r.id,
+          village: villageName(r.villageId),
+          period: r.period,
+          crop: r.crop,
+          occurrence: r.occurrence,
+          processing: r.processing,
+          comparison: r.comparison,
+          recorded_at: r.createdAt,
+          gps_accuracy_m: r.accuracy,
+          survey_area_ha: r.measurement?.areaHa ?? null,
+          observed_tons: r.measurement?.tons ?? null,
+          method: r.measurement?.method ?? null,
+          coverage: r.measurement?.coverage ?? null,
+          coefficient_kg_ha: r.prediction?.coefficient ?? null,
+          coefficient_source: r.prediction?.source ?? null,
+          expected_sample_tons: compareMeasurement(r)?.expectedTons ?? null,
+          sample_difference_tons: compareMeasurement(r)?.differenceTons ?? null,
+          data_status: '공개 시연 입력 · 검증 전',
+        },
+      })),
+  };
+}
+export function reportEvidence(
+  inputs: Village[],
+  records: Verification[],
+  period: string,
+  district: string,
+  capturedAt: string,
+) {
+  const s = summarize(inputs, records, period, district);
+  return {
+    capturedAt,
+    tons: s.tons,
+    count: s.filtered.length,
+    exampleCount: s.filtered.filter((r) => r.demo).length,
+    agreement: s.agreement,
+    concentrated: s.concentrated,
+    recordIds: s.filtered.filter((r) => !r.demo).map((r) => r.id),
+    inputs: s.selected.map((v) => ({
+      id: v.id,
+      crop: v.crop,
+      area: v.area,
+      coefficient: v.coefficient,
+      source: v.source,
+    })),
+    quality: dataQuality(
+      s.filtered,
+      s.selected.map((v) => v.id),
+    ),
+  };
+}
+export function analysisReportText(report: AnalysisReport) {
+  const e = report.evidence;
+  const percent = (v: number | null) => (v === null ? '산정 전' : v + '%');
+  return [
+    report.title,
+    '대상: ' + report.period + ' / ' + report.district,
+    '청년 실무자 · 공개 시연 계정',
+    ...(e
+      ? [
+          '근거 기준시각: ' + e.capturedAt,
+          '예상 발생량: ' + e.tons.toFixed(1) + 't (예시 농업자료)',
+          '직접 입력: ' +
+            e.quality.total +
+            '건 / 예시: ' +
+            e.exampleCount +
+            '건',
+          'GPS 기록률: ' + percent(e.quality.gpsRate),
+          '사진 첨부율: ' + percent(e.quality.photoRate),
+          '표본량 비교 가능률: ' + percent(e.quality.comparableRate),
+          '자료 범위: 최근 1,000건 중 선택 기간·지역. 직접 입력은 실증 검증 완료를 뜻하지 않습니다.',
+          '근거 기록 ID: ' + (e.recordIds.join(', ') || '없음'),
+          '예측 입력자료 (마을 ID / 작물 / ha / kg·ha⁻¹ / 출처)',
+          ...e.inputs.map((v) =>
+            [v.id, v.crop, v.area, v.coefficient, v.source].join(' / '),
+          ),
+        ]
+      : [
+          '이전 보고서: 저장 당시 근거가 없어 현재 자료로 복원하지 않았습니다.',
+        ]),
+    '',
+    '1. 현장 및 데이터 분석',
+    report.analysis,
+    '',
+    '2. 다음 기간 검토 제안',
+    report.recommendation,
+    '',
+    '표본량 비교는 동일 조사면적 기준이며 마을 전체 발생량·예측 정확도가 아닙니다.',
+    '발생계수는 검증 전 시연값입니다. 최종 정책판단은 담당 공무원이 합니다.',
+    '작업 산출물이며 전문자격·공인 경력 인증이 아닙니다.',
+  ].join('\n');
+}
 export function downloadFile(
   name: string,
   text: string,
   type = 'text/plain;charset=utf-8',
 ) {
-  const url = URL.createObjectURL(new Blob(['\uFEFF', text], { type }));
+  const url = URL.createObjectURL(
+    new Blob([type.includes('json') ? '' : '\uFEFF', text], { type }),
+  );
   const a = document.createElement('a');
   a.href = url;
   a.download = name;

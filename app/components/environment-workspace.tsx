@@ -24,6 +24,7 @@ import {
   predictTons,
   summarize,
   byproduct,
+  dataQuality,
 } from '@/lib/environment-data';
 import { useEnvironment } from '@/hooks/use-environment';
 import {
@@ -31,6 +32,7 @@ import {
   RecordsPanel,
   ReportPanel,
   CareerPanel,
+  DataQualityPanel,
 } from '@/components/environment-panels';
 import { EnvironmentMap } from '@/components/environment-map';
 import { ProductTour } from '@/components/product-tour';
@@ -93,6 +95,10 @@ export function EnvironmentWorkspace() {
               verifications: summary.filtered.length,
               agreement: summary.agreement,
               liveRecords: summary.filtered.filter((r) => !r.demo).length,
+              dataQuality: dataQuality(
+                summary.filtered,
+                summary.selected.map((v) => v.id),
+              ),
               containsExampleData: true,
             };
           },
@@ -297,16 +303,19 @@ export function EnvironmentWorkspace() {
                     note: summary.selected.length + '개 마을 · 면적 × 발생계수',
                   },
                   {
-                    label: '현장검증 지점',
+                    label: '현장검증 기록',
                     value: summary.filtered.length,
-                    unit: '곳',
-                    note: '예측을 실제 현장과 연결',
+                    unit: '건',
+                    note:
+                      '직접 입력 ' +
+                      summary.filtered.filter((r) => !r.demo).length +
+                      '건 · 나머지는 예시',
                   },
                   {
-                    label: '예측 일치율',
+                    label: '정성 일치율',
                     value: summary.agreement ?? '—',
                     unit: '%',
-                    note: '예상과 유사 응답 / 전체 검증',
+                    note: '예상과 유사 응답 / 전체 검증 · 예시 포함',
                   },
                   {
                     label: '집중확인 권장 마을',
@@ -325,6 +334,10 @@ export function EnvironmentWorkspace() {
                   </article>
                 ))}
               </div>
+              <DataQualityPanel
+                records={summary.filtered}
+                villageIds={summary.selected.map((v) => v.id)}
+              />
               <div className="dashboard-grid">
                 <section className="surface trend-panel">
                   <div className="section-heading">

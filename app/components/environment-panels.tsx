@@ -35,6 +35,11 @@ import {
   csvCell,
   DEMO_WORKER,
   downloadFile,
+  dataQuality,
+  compareMeasurement,
+  recordsGeoJson,
+  reportEvidence,
+  analysisReportText,
   predictTons,
   quantityLevel,
   summarize,
@@ -45,6 +50,85 @@ import {
   type Village,
 } from '@/lib/environment-data';
 type Mutate = (payload: Record<string, unknown> | FormData) => Promise<any>;
+export function DataQualityPanel({
+  records,
+  villageIds = [],
+}: {
+  records: Verification[];
+  villageIds?: string[];
+}) {
+  const q = dataQuality(records, villageIds);
+  const rows = [
+    ['GPS 기록률', q.gpsRate, q.gps, q.total, '95% 이상'],
+    ['사진 첨부율', q.photoRate, q.photo, q.total, '목표 미설정'],
+    [
+      '필수 상태 누락률',
+      q.missingRate,
+      q.total - q.complete,
+      q.total,
+      '5% 이하',
+    ],
+    ['표본량 비교 가능률', q.comparableRate, q.comparable, q.total, '80% 이상'],
+    ...(villageIds.length
+      ? [
+          [
+            '예측 마을 현장검증률',
+            q.coverageRate,
+            q.verifiedVillages,
+            q.expectedVillages,
+            '80% 이상',
+          ],
+        ]
+      : []),
+  ];
+  return (
+    <section className="surface">
+      <div className="section-heading">
+        <div>
+          <h2>실증 데이터 품질</h2>
+          <p>직접 입력 {q.total}건 기준 · 예시 자료 제외</p>
+        </div>
+        <span className="tag neutral">시범사업 목표 예시</span>
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>지표</TableHead>
+            <TableHead>현재</TableHead>
+            <TableHead>분자 / 분모</TableHead>
+            <TableHead>목표 예시</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map(([label, rate, n, total, target]) => (
+            <TableRow key={String(label)}>
+              <TableCell>{label}</TableCell>
+              <TableCell>
+                <strong>{rate === null ? '산정 전' : rate + '%'}</strong>
+              </TableCell>
+              <TableCell>
+                {n} / {total}
+              </TableCell>
+              <TableCell>{target}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+      {!q.total && (
+        <p className="empty-state">
+          직접 입력된 현장기록이 없습니다. 예시 자료로 목표 달성을 표시하지
+          않습니다.
+        </p>
+      )}
+      <p className="data-footnote">
+        최근 1,000건 중 선택 범위 기준입니다. 필수 상태는
+        작물·발생·예측비교·처리 상태이며, 표본량 비교는 같은 작물·월의 발생 완료
+        구역 전체량(계량 또는 추정)에 한합니다. 입력 완결성 지표이지 데이터의
+        사실성·예측 정확도 인증이 아닙니다.
+      </p>
+    </section>
+  );
+}
 export function PredictPanel({
   inputs,
   period,
@@ -353,6 +437,8 @@ export function RecordsPanel({ records }: { records: Verification[] }) {
   const filtered = records.filter(
     (r) => kind === 'all' || (kind === 'live' ? !r.demo : r.demo),
   );
+  const live = filtered.filter((r) => !r.demo);
+  const detailComparison = detail ? compareMeasurement(detail) : null;
   const exportCsv = () =>
     downloadFile(
       '현장검증자료.csv',
@@ -371,6 +457,15 @@ export function RecordsPanel({ records }: { records: Verification[] }) {
           'GPS오차m',
           '기록일시',
           '메모',
+          '기록ID',
+          '조사면적ha',
+          '확인부산물t',
+          '확인방법',
+          '조사범위',
+          '저장당시계수kg_ha',
+          '계수출처',
+          '표본예상량t',
+          '표본차이t',
         ],
         ...filtered.map((r) => [
           r.demo ? '예시' : '직접 입력',
@@ -386,6 +481,15 @@ export function RecordsPanel({ records }: { records: Verification[] }) {
           r.accuracy,
           r.createdAt,
           r.note,
+          r.id,
+          r.measurement?.areaHa,
+          r.measurement?.tons,
+          r.measurement?.method,
+          r.measurement?.coverage,
+          r.prediction?.coefficient,
+          r.prediction?.source,
+          compareMeasurement(r)?.expectedTons,
+          compareMeasurement(r)?.differenceTons,
         ]),
       ]
         .map((row) => row.map(csvCell).join(','))
@@ -416,6 +520,21 @@ export function RecordsPanel({ records }: { records: Verification[] }) {
           >
             <ArrowDownToLine />
             CSV 내보내기
+          </Button>
+          <Button
+            variant="outline"
+            className="action-button"
+            disabled={!live.length}
+            onClick={() =>
+              downloadFile(
+                '들녘_현장검증.geojson',
+                JSON.stringify(recordsGeoJson(live), null, 2),
+                'application/geo+json',
+              )
+            }
+          >
+            <MapPin />
+            QGIS용 GeoJSON
           </Button>
         </div>
       </div>
@@ -506,6 +625,49 @@ export function RecordsPanel({ records }: { records: Verification[] }) {
                   ' · GPS 오차 약 ' + Math.round(detail.accuracy) + 'm'}
               </p>
               <p className="note-text">{detail.note || '특이사항 없음'}</p>
+              <div className="method-banner">
+                <div>
+                  <strong>표본량과 저장 당시 예측 근거</strong>
+                  {detail.measurement ? (
+                    <p>
+                      {detail.measurement.areaHa} ha · {detail.measurement.tons}{' '}
+                      t ·{' '}
+                      {detail.measurement.method === 'weighed'
+                        ? '계량값'
+                        : '현장 추정값'}{' '}
+                      ·{' '}
+                      {detail.measurement.coverage === 'complete'
+                        ? '구역 전체량'
+                        : '일부량'}
+                    </p>
+                  ) : (
+                    <p>표본량 미입력</p>
+                  )}
+                  {detail.prediction ? (
+                    <p>
+                      계수 {detail.prediction.coefficient.toLocaleString()}{' '}
+                      kg/ha · {detail.prediction.crop}
+                      <br />
+                      {detail.prediction.source}
+                    </p>
+                  ) : (
+                    <p>이전 기록: 저장 당시 예측 근거 없음</p>
+                  )}
+                  {detailComparison ? (
+                    <p>
+                      동일 조사면적 예상{' '}
+                      {detailComparison.expectedTons.toFixed(3)} t / 차이{' '}
+                      {detailComparison.differenceTons.toFixed(3)} t<br />
+                      마을 전체량이 아니며, 추정값·검증 전 계수의 비교입니다.
+                    </p>
+                  ) : (
+                    <p>
+                      정량 비교 제외: 같은 작물·월, 발생 완료, 구역 전체량,
+                      유효한 계수가 필요합니다.
+                    </p>
+                  )}
+                </div>
+              </div>
             </>
           )}
         </DialogContent>
@@ -549,32 +711,23 @@ export function ReportPanel({
   const [busy, setBusy] = useState(false);
   const summary = summarize(inputs, records, period, district);
   const reportText = () =>
-    [
-      title,
-      '대상: ' + period + ' / ' + district,
-      '작성자: 청년 실무자(시연 계정)',
-      '자료: 발표용 예시 농업자료 + 직접 입력 현장기록',
-      '예상 발생량: ' + summary.tons.toFixed(1) + 't',
-      '현장검증: ' +
-        summary.filtered.length +
-        '건 (직접 입력 ' +
-        summary.filtered.filter((r) => !r.demo).length +
-        '건)',
-      '예측 일치율: ' +
-        (summary.agreement ?? '산정 불가') +
-        (summary.agreement === null ? '' : '%') +
-        ' · 유사 응답 / 전체 검증',
-      '집중확인 권장 마을: ' + summary.concentrated + '개',
-      '',
-      '1. 현장 및 데이터 분석',
+    analysisReportText({
+      id: 'draft',
+      workerId: DEMO_WORKER,
+      title: '[미저장 초안] ' + title,
+      period,
+      district,
       analysis,
-      '',
-      '2. 다음 기간 검토 제안',
       recommendation,
-      '',
-      '발생계수와 마을정보는 시연용입니다. 정량적 예측 정확도·정책 효과로 해석하지 않습니다.',
-      '정책 검토를 위한 실무자의 분석이며 최종 정책판단은 담당 공무원이 합니다.',
-    ].join('\n');
+      updatedAt: new Date().toISOString(),
+      evidence: reportEvidence(
+        inputs,
+        records,
+        period,
+        district,
+        new Date().toISOString(),
+      ),
+    });
   return (
     <div className="report-layout">
       <section className="surface report-editor">
@@ -646,7 +799,7 @@ export function ReportPanel({
             onClick={() => downloadFile(title + '.txt', reportText())}
           >
             <ArrowDownToLine />
-            보고서 내려받기
+            초안 내려받기
           </Button>
         </div>
         {message && (
@@ -683,7 +836,8 @@ export function ReportPanel({
           </dl>
           <p className="data-footnote">
             일치율 = ‘예상과 유사’ 응답 ÷ 현장검증 건수. 정량 예측 오차와는
-            구분합니다.
+            구분합니다. 이 패널은 최신 자료이며, 보고서를 저장하면 당시 근거를
+            함께 보관합니다.
           </p>
         </section>
         <section className="surface">
@@ -704,6 +858,23 @@ export function ReportPanel({
               <div key={r.id} className="saved-report">
                 <strong>{r.title}</strong>
                 <p>{new Date(r.updatedAt).toLocaleDateString('ko-KR')}</p>
+                <p className="data-footnote">
+                  {r.evidence
+                    ? '저장 당시 근거 포함 · 직접 입력 ' +
+                      r.evidence.quality.total +
+                      '건'
+                    : '이전 저장본 · 근거 스냅샷 없음'}
+                </p>
+                <Button
+                  variant="outline"
+                  className="action-button"
+                  onClick={() =>
+                    downloadFile(r.title + '.txt', analysisReportText(r))
+                  }
+                >
+                  <ArrowDownToLine />
+                  저장본 내려받기
+                </Button>
               </div>
             ))
           ) : (
@@ -825,6 +996,26 @@ export function CareerPanel({
           CSV 자료를 QGIS에서 지도화하거나 Excel·Power BI로 분석할 수 있습니다.
           외부 도구를 사용했다는 실적은 실제 산출물을 확인한 후 포트폴리오에
           추가하세요.
+        </p>
+        <Button
+          variant="outline"
+          className="action-button"
+          disabled={!mine.length}
+          onClick={() =>
+            downloadFile(
+              '들녘_나의현장산출물.geojson',
+              JSON.stringify(recordsGeoJson(mine), null, 2),
+              'application/geo+json',
+            )
+          }
+        >
+          <MapPin />
+          나의 GIS 원자료
+        </Button>
+        <p className="data-footnote">
+          GeoJSON을 QGIS로 불러와 지도 산출물을 만들 수 있습니다. 내려받기
+          자체를 도구 활용 실적으로 집계하지 않습니다. 공개 시연 자료이므로
+          농가명·연락처·얼굴 등 개인정보를 입력하지 마세요.
         </p>
         <p className="data-footnote">
           앱은 실제 업무와 산출물을 기록합니다. 전문자격이나 공인 경력을

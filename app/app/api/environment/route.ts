@@ -7,6 +7,9 @@ import {
   processingStates,
   villages,
   DEMO_WORKER,
+  demoVerifications,
+  reportEvidence,
+  type Verification,
 } from '@/lib/environment-data';
 export const OPTIONS = preflight;
 type Row = {
@@ -87,6 +90,24 @@ export async function POST(request: Request) {
     ) as Record<string, unknown>;
     const now = Date.now();
     const action = body.action;
+    const inputRow =
+      action === 'verify' || action === 'report'
+        ? await DB.prepare(
+            'SELECT payload FROM environment_documents WHERE id=?',
+          )
+            .bind('prediction-inputs')
+            .first<Row>()
+        : null;
+    const overrides: Array<{ id: string; area: number; coefficient: number }> =
+      inputRow ? JSON.parse(inputRow.payload) : [];
+    const currentInputs = villages.map((v) => {
+      const override = overrides.find((i) => i.id === v.id);
+      return {
+        ...v,
+        ...override,
+        source: override ? '사용자 입력 · 발생계수 검증 전' : v.source,
+      };
+    });
     if (action === 'verify') {
       const id = text(body.id, 64);
       if (!/^[a-f0-9-]{36}$/.test(id))
@@ -125,6 +146,48 @@ export async function POST(request: Request) {
           { error: '작물, 현장 상태, 대상 기간과 GPS 좌표를 확인해 주세요.' },
           400,
         );
+      const measurementFields = [
+        body.areaHa,
+        body.observedTons,
+        body.measurementMethod,
+        body.measurementCoverage,
+      ];
+      const present = (v: unknown) => v !== undefined && v !== null && v !== '';
+      let measurement: Verification['measurement'];
+      if (measurementFields.some(present)) {
+        const numeric = (v: unknown) =>
+          (typeof v === 'number' ||
+            (typeof v === 'string' && v.trim() !== '')) &&
+          Number.isFinite(Number(v));
+        if (
+          !measurementFields.every(present) ||
+          !numeric(body.areaHa) ||
+          !numeric(body.observedTons) ||
+          Number(body.areaHa) <= 0 ||
+          Number(body.areaHa) > 100000 ||
+          Number(body.observedTons) < 0 ||
+          Number(body.observedTons) > 100000 ||
+          typeof body.measurementMethod !== 'string' ||
+          !['weighed', 'estimated'].includes(body.measurementMethod) ||
+          typeof body.measurementCoverage !== 'string' ||
+          !['complete', 'partial'].includes(body.measurementCoverage)
+        ) {
+          return jsonResponse(
+            request,
+            {
+              error:
+                '표본량 기록은 조사면적(0 초과), 부산물량(0 이상), 확인방법, 조사범위를 모두 입력해 주세요. 최대값은 각각 100,000입니다.',
+            },
+            400,
+          );
+        }
+        measurement = {
+          areaHa: Number(body.areaHa),
+          tons: Number(body.observedTons),
+          method: body.measurementMethod as 'weighed' | 'estimated',
+          coverage: body.measurementCoverage as 'complete' | 'partial',
+        };
+      }
       const digest = await crypto.subtle.digest(
         'SHA-256',
         new TextEncoder().encode(
@@ -180,6 +243,17 @@ export async function POST(request: Request) {
         lat,
         lng,
         accuracy,
+        measurement,
+        prediction: (() => {
+          const v = currentInputs.find((v) => v.id === villageId)!;
+          return {
+            crop: v.crop,
+            coefficient: v.coefficient,
+            month: v.month,
+            source: v.source,
+            capturedAt: new Date(now).toISOString(),
+          };
+        })(),
         createdAt: new Date(now).toISOString(),
       };
       await DB.prepare(
@@ -262,6 +336,16 @@ export async function POST(request: Request) {
         '-' +
         DEMO_WORKER;
       kind = 'report';
+      const evidenceRows = await DB.prepare(
+        'SELECT id,payload,photo_key FROM environment_records ORDER BY created_at DESC LIMIT 1000',
+      ).all<Row>();
+      const evidenceRecords: Verification[] = (evidenceRows.results ?? []).map(
+        (r) => ({
+          ...JSON.parse(r.payload),
+          id: r.id,
+          photo: r.photo_key || undefined,
+        }),
+      );
       payload = {
         id,
         workerId: DEMO_WORKER,
@@ -271,6 +355,13 @@ export async function POST(request: Request) {
         analysis: text(body.analysis, 5000),
         recommendation: text(body.recommendation, 3000),
         updatedAt: new Date(now).toISOString(),
+        evidence: reportEvidence(
+          currentInputs,
+          [...evidenceRecords, ...demoVerifications],
+          String(body.period),
+          String(body.district),
+          new Date(now).toISOString(),
+        ),
       };
     } else if (action === 'inputs') {
       if (!Array.isArray(body.inputs) || body.inputs.length !== villages.length)

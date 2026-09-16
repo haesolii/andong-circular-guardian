@@ -39,10 +39,14 @@ export function useEnvironment() {
       setTasks(body.tasks);
       setReports(body.reports);
       setInputs(
-        villages.map((v) => ({
-          ...v,
-          ...body.inputs?.find((i: { id: string }) => i.id === v.id),
-        })),
+        villages.map((v) => {
+          const override = body.inputs?.find((i) => i.id === v.id);
+          return {
+            ...v,
+            ...override,
+            source: override ? '사용자 입력 · 발생계수 검증 전' : v.source,
+          };
+        }),
       );
       setSync('online');
       setLastSync(
